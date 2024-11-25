@@ -1,3 +1,11 @@
+# Repo-custom ignores
+monailabel/apps/radiology/model
+monailabel/apps/radiology/bin
+monailabel/apps/radiology/logs
+monailabel/apps/octa500/model
+monailabel/apps/octa500/bin
+monailabel/apps/octa500/logs
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -14,8 +22,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+#lib/
+#lib64/
 parts/
 sdist/
 var/
