@@ -85,7 +85,7 @@ class Segmentation(BasicTrainTask):
                 margin=10,
                 k_divisible=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
             ),
-            GaussianSmoothd(keys="image", sigma=0.4),
+            #GaussianSmoothd(keys="image", sigma=0.4),
             ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0),
             RandSpatialCropd(
                 keys=["image", "label"],
@@ -122,7 +122,7 @@ class Segmentation(BasicTrainTask):
                 margin=10,
                 k_divisible=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
             ),
-            GaussianSmoothd(keys="image", sigma=0.4),
+            #GaussianSmoothd(keys="image", sigma=0.4),
             ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0),
             SelectItemsd(keys=("image", "label")),
         ]

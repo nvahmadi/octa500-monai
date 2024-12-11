@@ -12,24 +12,28 @@
 import logging
 
 import torch
-from lib.transforms.transforms import NormalizeLabelsInDatasetd
+from lib.transforms.transforms import (
+    ConcatenateROId,
+    GaussianSmoothedCentroidd,
+    GetCentroidsd,
+    SelectVertebraAndCroppingd,
+)
 from monai.handlers import TensorBoardImageHandler, from_engine
-from monai.inferers import SlidingWindowInferer
+from monai.inferers import SimpleInferer
 from monai.losses import DiceCELoss
 from monai.transforms import (
     Activationsd,
     AsDiscreted,
-    CropForegroundd,
     EnsureChannelFirstd,
     EnsureTyped,
     GaussianSmoothd,
     LoadImaged,
-    NormalizeIntensityd,
-    Orientationd,
-    RandSpatialCropd,
+    RandScaleIntensityd,
+    RandShiftIntensityd,
+    Resized,
     ScaleIntensityd,
+    ScaleIntensityRanged,
     SelectItemsd,
-    Spacingd,
 )
 
 from monailabel.tasks.train.basic_train import BasicTrainTask, Context
@@ -38,7 +42,7 @@ from monailabel.tasks.train.utils import region_wise_metrics
 logger = logging.getLogger(__name__)
 
 
-class Segmentation(BasicTrainTask):
+class SegmentationVertebra(BasicTrainTask):
     def __init__(
         self,
         model_dir,
@@ -46,7 +50,7 @@ class Segmentation(BasicTrainTask):
         roi_size=(96, 96, 96),
         target_spacing=(1.0, 1.0, 1.0),
         num_samples=4,
-        description="Train Segmentation model",
+        description="Train vertebra segmentation model",
         **kwargs,
     ):
         self._network = network
@@ -72,27 +76,22 @@ class Segmentation(BasicTrainTask):
 
     def train_pre_transforms(self, context: Context):
         return [
-            LoadImaged(keys=("image", "label")),
-            NormalizeLabelsInDatasetd(keys="label", label_names=self._labels),  # Specially for missing labels
+            LoadImaged(keys=("image", "label"), reader="ITKReader"),
             EnsureChannelFirstd(keys=("image", "label")),
-            EnsureTyped(keys=("image", "label"), device=context.device),
-            Orientationd(keys=("image", "label"), axcodes="RAS"),
-            Spacingd(keys=("image", "label"), pixdim=self.target_spacing, mode=("bilinear", "nearest")),
-            NormalizeIntensityd(keys="image", nonzero=True),
-            CropForegroundd(
-                keys=("image", "label"),
-                source_key="image",
-                margin=10,
-                k_divisible=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
-            ),
+            # NormalizeIntensityd(keys="image", divisor=2048.0),
+            ScaleIntensityRanged(keys="image", a_min=-1000, a_max=1900, b_min=0.0, b_max=1.0, clip=True),
             GaussianSmoothd(keys="image", sigma=0.4),
             ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0),
-            RandSpatialCropd(
-                keys=["image", "label"],
-                roi_size=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
-                random_size=False,
-            ),
-            SelectItemsd(keys=("image", "label")),
+            GetCentroidsd(keys="label", centroids_key="centroids"),
+            SelectVertebraAndCroppingd(keys="label"),
+            RandShiftIntensityd(keys="image", offsets=0.1, prob=1.0),
+            RandScaleIntensityd(keys="image", factors=0.1, prob=1.0),
+            GaussianSmoothedCentroidd(keys="NA", signal_key="signal"),
+            Resized(keys=("image", "label", "signal"), spatial_size=self.roi_size, mode=("area", "nearest", "area")),
+            # SaveImaged(keys="label", output_postfix="", output_dir="/home/andres/Downloads", separate_folder=False),
+            ConcatenateROId(keys="signal"),
+            EnsureTyped(keys=("image", "label"), device=context.device),
+            SelectItemsd(keys=("image", "label", "centroids", "original_size", "current_label", "slices_cropped")),
         ]
 
     def train_post_transforms(self, context: Context):
@@ -108,29 +107,23 @@ class Segmentation(BasicTrainTask):
 
     def val_pre_transforms(self, context: Context):
         return [
-            LoadImaged(keys=("image", "label")),
-            NormalizeLabelsInDatasetd(keys="label", label_names=self._labels),  # Specially for missing labels
-            EnsureTyped(keys=("image", "label")),
+            LoadImaged(keys=("image", "label"), reader="ITKReader"),
             EnsureChannelFirstd(keys=("image", "label")),
-            Orientationd(keys=("image", "label"), axcodes="RAS"),
-            Spacingd(keys=("image", "label"), pixdim=self.target_spacing, mode=("bilinear", "nearest")),
-            NormalizeIntensityd(keys="image", nonzero=True),
-            # ScaleIntensityRanged(keys="image", a_min=-1000, a_max=1900, b_min=0.0, b_max=1.0, clip=True),
-            CropForegroundd(
-                keys=("image", "label"),
-                source_key="label",
-                margin=10,
-                k_divisible=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
-            ),
+            # NormalizeIntensityd(keys="image", divisor=2048.0),
+            ScaleIntensityRanged(keys="image", a_min=-1000, a_max=1900, b_min=0.0, b_max=1.0, clip=True),
             GaussianSmoothd(keys="image", sigma=0.4),
             ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0),
-            SelectItemsd(keys=("image", "label")),
+            GetCentroidsd(keys="label", centroids_key="centroids"),
+            SelectVertebraAndCroppingd(keys="label"),
+            GaussianSmoothedCentroidd(keys="NA", signal_key="signal"),
+            Resized(keys=("image", "label", "signal"), spatial_size=self.roi_size, mode=("area", "nearest", "area")),
+            ConcatenateROId(keys="signal"),
+            EnsureTyped(keys=("image", "label"), device=context.device),
+            SelectItemsd(keys=("image", "label", "centroids", "original_size", "current_label", "slices_cropped")),
         ]
 
     def val_inferer(self, context: Context):
-        return SlidingWindowInferer(
-            roi_size=self.roi_size, sw_batch_size=2, overlap=0.4, padding_mode="replicate", mode="gaussian"
-        )
+        return SimpleInferer()
 
     def norm_labels(self):
         # This should be applied along with NormalizeLabelsInDatasetd transform

@@ -11,7 +11,7 @@
 
 from typing import Callable, Sequence
 
-from lib.transforms.transforms import GetCentroidsd
+from lib.transforms.transforms import BinaryMaskd, CacheObjectd
 from monai.inferers import Inferer, SlidingWindowInferer
 from monai.transforms import (
     Activationsd,
@@ -21,9 +21,8 @@ from monai.transforms import (
     GaussianSmoothd,
     KeepLargestConnectedComponentd,
     LoadImaged,
-    NormalizeIntensityd,
-    Orientationd,
     ScaleIntensityd,
+    ScaleIntensityRanged,
     Spacingd,
 )
 
@@ -32,9 +31,9 @@ from monailabel.tasks.infer.basic_infer import BasicInferTask
 from monailabel.transform.post import Restored
 
 
-class Segmentation(BasicInferTask):
+class LocalizationSpine(BasicInferTask):
     """
-    This provides Inference Engine for pre-trained Segmentation (SegResNet) model.
+    This provides Inference Engine for pre-trained spine localization (UNet) model.
     """
 
     def __init__(
@@ -45,7 +44,7 @@ class Segmentation(BasicInferTask):
         type=InferType.SEGMENTATION,
         labels=None,
         dimension=3,
-        description="A pre-trained model for volumetric (3D) Segmentation from CT image",
+        description="A pre-trained model for volumetric (3D) spine localization from CT image",
         **kwargs,
     ):
         super().__init__(
@@ -61,47 +60,35 @@ class Segmentation(BasicInferTask):
         self.target_spacing = target_spacing
 
     def pre_transforms(self, data=None) -> Sequence[Callable]:
-        t = [
-            LoadImaged(keys="image"),
+        return [
+            LoadImaged(keys="image", reader="ITKReader"),
             EnsureTyped(keys="image", device=data.get("device") if data else None),
             EnsureChannelFirstd(keys="image"),
-            Orientationd(keys="image", axcodes="RAS"),
-            Spacingd(keys="image", pixdim=self.target_spacing, allow_missing_keys=True),
-            NormalizeIntensityd(keys="image", nonzero=True),
+            CacheObjectd(keys="image"),
+            Spacingd(keys="image", pixdim=self.target_spacing),
+            ScaleIntensityRanged(keys="image", a_min=-1000, a_max=1900, b_min=0.0, b_max=1.0, clip=True),
             GaussianSmoothd(keys="image", sigma=0.4),
             ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0),
         ]
-        return t
 
     def inferer(self, data=None) -> Inferer:
         return SlidingWindowInferer(
-            roi_size=self.roi_size,
-            sw_batch_size=2,
-            overlap=0.4,
-            padding_mode="replicate",
-            mode="gaussian",
+            roi_size=self.roi_size, sw_batch_size=2, overlap=0.4, padding_mode="replicate", mode="gaussian"
         )
-
-    def inverse_transforms(self, data=None):
-        return []
 
     def post_transforms(self, data=None) -> Sequence[Callable]:
-        t = [
-            EnsureTyped(keys="image", device=data.get("device") if data else None),
+        applied_labels = list(self.labels.values()) if isinstance(self.labels, dict) else self.labels
+        return [
+            EnsureTyped(keys="pred", device=data.get("device") if data else None),
             Activationsd(keys="pred", softmax=True),
             AsDiscreted(keys="pred", argmax=True),
+            KeepLargestConnectedComponentd(keys="pred"),
+            BinaryMaskd(keys="pred"),
+            Restored(keys="pred", ref_image="image"),
         ]
 
-        if data and data.get("largest_cc", False):
-            t.append(KeepLargestConnectedComponentd(keys="pred"))
-        t.extend(
-            [
-                Restored(
-                    keys="pred",
-                    ref_image="image",
-                    config_labels=self.labels if data.get("restore_label_idx", False) else None,
-                ),
-                GetCentroidsd(keys="pred", centroids_key="centroids"),
-            ]
-        )
-        return t
+    def writer(self, data, extension=None, dtype=None):
+        if data.get("pipeline_mode", False):
+            return {"image": data["image_cached"], "pred": data["pred"]}, {}
+
+        return super().writer(data, extension, dtype)

@@ -16,56 +16,46 @@ from typing import Any, Dict, Optional, Union
 import lib.infers
 import lib.trainers
 from monai.networks.nets import SegResNet
-from monai.utils import optional_import
 
 from monailabel.interfaces.config import TaskConfig
 from monailabel.interfaces.tasks.infer_v2 import InferTask
 from monailabel.interfaces.tasks.train import TrainTask
-from monailabel.utils.others.generic import download_file, remove_file, strtobool
-
-_, has_cp = optional_import("cupy")
-_, has_cucim = optional_import("cucim")
+from monailabel.utils.others.generic import download_file, strtobool
 
 logger = logging.getLogger(__name__)
 
 
-class Segmentation(TaskConfig):
+class SegmentationVertebra(TaskConfig):
     def init(self, name: str, model_dir: str, conf: Dict[str, str], planner: Any, **kwargs):
         super().init(name, model_dir, conf, planner, **kwargs)
 
         # Labels
-        conf_labels = self.conf.get("labels")
-        self.labels = (
-            {label: idx for idx, label in enumerate(conf_labels.split(","), start=1)}
-            if conf_labels
-            else {
-                "spleen": 1,
-                "kidney_right": 2,
-                "kidney_left": 3,
-                "gallbladder": 4,
-                "liver": 5,
-                "stomach": 6,
-                "aorta": 7,
-                "inferior_vena_cava": 8,
-                "portal_vein_and_splenic_vein": 9,
-                "pancreas": 10,
-                "adrenal_gland_right": 11,
-                "adrenal_gland_left": 12,
-                "lung_upper_lobe_left": 13,
-                "lung_lower_lobe_left": 14,
-                "lung_upper_lobe_right": 15,
-                "lung_middle_lobe_right": 16,
-                "lung_lower_lobe_right": 17,
-                "esophagus": 42,
-                "trachea": 43,
-                "heart_myocardium": 44,
-                "heart_atrium_left": 45,
-                "heart_ventricle_left": 46,
-                "heart_atrium_right": 47,
-                "heart_ventricle_right": 48,
-                "pulmonary_artery": 49,
-            }
-        )
+        self.labels = {
+            "C1": 1,
+            "C2": 2,
+            "C3": 3,
+            "C4": 4,
+            "C5": 5,
+            "C6": 6,
+            "C7": 7,
+            "Th1": 8,
+            "Th2": 9,
+            "Th3": 10,
+            "Th4": 11,
+            "Th5": 12,
+            "Th6": 13,
+            "Th7": 14,
+            "Th8": 15,
+            "Th9": 16,
+            "Th10": 17,
+            "Th11": 18,
+            "Th12": 19,
+            "L1": 20,
+            "L2": 21,
+            "L3": 22,
+            "L4": 23,
+            "L5": 24,
+        }
 
         # Model Files
         self.path = [
@@ -74,24 +64,19 @@ class Segmentation(TaskConfig):
         ]
 
         # Download PreTrained Model
-        if not conf_labels and strtobool(self.conf.get("use_pretrained_model", "true")):
+        if strtobool(self.conf.get("use_pretrained_model", "true")):
             url = f"{self.conf.get('pretrained_path', self.PRE_TRAINED_PATH)}"
-            url = f"{url}/radiology_segmentation_segresnet_multilabel.pt"
+            url = f"{url}/radiology_segmentation_segresnet_vertebra.pt"
             download_file(url, self.path[0])
 
-        # Remove pre-trained pt if user is using his/her custom labels.
-        if conf_labels:
-            remove_file(self.path[0])
-
-        self.target_spacing = (1.5, 1.5, 1.5)  # target space for image
-        # Setting ROI size - This is for the image padding
-        self.roi_size = (96, 96, 96)
+        self.target_spacing = (1.0, 1.0, 1.0)  # target space for image
+        self.roi_size = (128, 128, 96)
 
         # Network
         self.network = SegResNet(
             spatial_dims=3,
-            in_channels=1,
-            out_channels=len(self.labels) + 1,  # labels plus background,
+            in_channels=2,
+            out_channels=2,
             init_filters=32,
             blocks_down=(1, 2, 2, 4),
             blocks_up=(1, 1, 1),
@@ -99,14 +84,13 @@ class Segmentation(TaskConfig):
         )
 
     def infer(self) -> Union[InferTask, Dict[str, InferTask]]:
-        task: InferTask = lib.infers.Segmentation(
+        task: InferTask = lib.infers.SegmentationVertebra(
             path=self.path,
             network=self.network,
             roi_size=self.roi_size,
             target_spacing=self.target_spacing,
             labels=self.labels,
             preload=strtobool(self.conf.get("preload", "false")),
-            config={"largest_cc": True if has_cp and has_cucim else False},
         )
         return task
 
@@ -114,14 +98,14 @@ class Segmentation(TaskConfig):
         output_dir = os.path.join(self.model_dir, self.name)
         load_path = self.path[0] if os.path.exists(self.path[0]) else self.path[1]
 
-        task: TrainTask = lib.trainers.Segmentation(
+        task: TrainTask = lib.trainers.SegmentationVertebra(
             model_dir=output_dir,
             network=self.network,
             roi_size=self.roi_size,
             target_spacing=self.target_spacing,
             load_path=load_path,
             publish_path=self.path[1],
-            description="Train Segmentation Model",
+            description="Train vertebra segmentation Model",
             labels=self.labels,
         )
         return task
