@@ -5,6 +5,9 @@ monailabel/apps/radiology/logs
 monailabel/apps/octa500/model
 monailabel/apps/octa500/bin
 monailabel/apps/octa500/logs
+monailabel/apps/octa500_100train_800epochs/model/
+monailabel/apps/octa500_100train_800epochs/bin/
+monailabel/apps/octa500_100train_800epochs/logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

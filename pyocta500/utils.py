@@ -47,14 +47,13 @@ def load_images_to_3d_array(directory, z_inverse=False):
     print(f"{volume.__class__=}")
     
     # Load images and extract channel 0
-    for i, file in enumerate(files):#, desc="Processing images"):
+    for i, file in enumerate(files):
         img = Image.open(os.path.join(directory, file))
         arr = np.array(img)  # Convert to NumPy array
         if z_inverse: 
             volume[:, :, num_images-1-i] = arr[:, :]
         else:
             volume[:, :, i] = arr[:, :]
-        slicer.app.processEvents()
     
     return volume
 
@@ -90,8 +89,8 @@ def load_gt_faz3d(subject_id=10301,
             data = mat_data['FAZlabel'][:]  # Load the data into memory as a NumPy array
     data = np.transpose(data, (2, 1, 0))
     
-    node_faz3d = addVolumeFromArray(data, name=f"gt_faz3d_{subject_id}", nodeClassName="vtkMRMLLabelMapVolumeNode")
-    node_faz3d.SetSpacing(3.0/304.0, 3.0/304.0, 2.0/640)
+    #node_faz3d = addVolumeFromArray(data, name=f"gt_faz3d_{subject_id}", nodeClassName="vtkMRMLLabelMapVolumeNode")
+    #node_faz3d.SetSpacing(3.0/304.0, 3.0/304.0, 2.0/640)
     
     return node_faz3d
 
@@ -115,8 +114,8 @@ def load_gt_layers3d(subject_id=10301,
     
     L3d = layers_to_3d(L)
     L3d = np.transpose(L3d, (2, 1, 0))
-    node_gt_layers3d = addVolumeFromArray(L3d, name=f"gt_layers3d_{subject_id}", nodeClassName="vtkMRMLLabelMapVolumeNode")
-    node_gt_layers3d.SetSpacing(3.0/304.0, 3.0/304.0, 2.0/640)
+    #node_gt_layers3d = addVolumeFromArray(L3d, name=f"gt_layers3d_{subject_id}", nodeClassName="vtkMRMLLabelMapVolumeNode")
+    #node_gt_layers3d.SetSpacing(3.0/304.0, 3.0/304.0, 2.0/640)
     
     return node_gt_layers3d
 
@@ -188,7 +187,6 @@ if __name__ == "__main__":
             shutil.copy(src_filepath, tgt_filepath)
         
         print(f"Finished subject {subject_id} ({idx+1} of {len(subject_ids)}).")
-        slicer.app.processEvents()
 
 
 
